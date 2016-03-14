@@ -7,6 +7,7 @@ output: html_document
 ## Introdution
 
 The objective of this assignment is to predict how well 6 participants are doing Dumbbell Biceps Curls.  The result can be one of 5 values:
+
 - Class A: Performed exactly according to the specification 
 - Class B: Throwing the elbows to the front
 - Class C: Lifting the dumbbell only halfway
@@ -34,7 +35,7 @@ The following updates are made to the data:
 
 - Remove the columns that contain NA's
 - Remove colums that are not relevant to the prediction (for example the user name)
-- Remove the columns that contains blank data in one or more rows
+- Remove the columns that contain blank data in one or more rows
 
 ```{r}
 library(caret)
@@ -59,7 +60,6 @@ data <- data[, !names(data) %in% names(data)[blank.columns]]
 
 # Remove the columns that are not relevant for the analysis
 
-#data$user_name <- NULL
 data$raw_timestamp_part_1 <- NULL
 data$raw_timestamp_part_2 <- NULL
 data$cvtd_timestamp <- NULL
@@ -99,12 +99,12 @@ kable(cor_matrix[cor_matrix$Correlation  > 0.8, ])
 
 t <- table(data$classe, data$user_name)
 pt <- prop.table(t)
-plot(pt)
+plot(pt, main="User by result (class)", xlab = "Result (class)", ylab= "User")
 ```
 
 
-
 **Conclusions:** 
+
 - There are multiple variables that are correlated, so we'll use PCA to create a new set of features that are uncorrelated and explain as much variance as possible 
 - There are differences between the users, so we'll keep it as a feature for the training model, along with the accelerometer data
 
@@ -123,7 +123,7 @@ train.data.PC <- predict(preProc, train.data[, -54])
 
 
 
-**Result:** PCA achives a ~48% reduction in the number of features, creating a new dataset with 25 features, instead of the 52 we had in the original one.  This removes the correlation between the features, and accelerates the execution of the prediction algorithm
+**Result:** PCA achives a ~50% reduction in the number of features, creating a new dataset with 26 features, instead of the 53 we had in the original one.  This removes the correlation between the features, and accelerates the execution of the prediction algorithm
 
 ## Step 5: Train the prediction models with the new set of features.
 
@@ -209,11 +209,11 @@ kable(results)
 
 
 
-** Conclusion: ** None of the algorithms is overfitting, as the out-of-sample error is very similar to the in-sample error.  Random Forest is the method that will be used for predictions
+**Conclusion:** None of the algorithms is overfitting, as the out-of-sample error is very similar to the in-sample error.  Random Forest is the method that will be used for predictions
 
 ## Step 7: Predict the values on the testing data provided in the assignment
 - Load the data
-- Apply same clean up rules as with the training data
+- Apply same clean up rules we did in the training data
 - Apply the PCA model to calculate the new set of features for the testing data
 - Predict the values for the 20 observations
 
@@ -231,7 +231,6 @@ final.data <- final.data[, !names(final.data) %in% names(final.data)[na.columns]
 
 final.data <- final.data[, !names(final.data) %in% names(final.data)[blank.columns]]
 
-#final.data$user_name <- NULL
 final.data$raw_timestamp_part_1 <- NULL
 final.data$raw_timestamp_part_2 <- NULL
 final.data$cvtd_timestamp <- NULL
@@ -251,4 +250,4 @@ pred <- predict(modelFit_rf, final.data.PC)
 
 
 
-** Note: ** Output not shown, to be compliant with Cursera's honor code
+**Note:** Output not shown, to be compliant with Cursera's honor code
