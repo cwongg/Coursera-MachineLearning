@@ -1,0 +1,14 @@
+base
+rpart
+lattice
+RevoScaleR
+RevoMods
+RevoUtils
+RevoUtilsMath
+ggplot2
+caret
+data.table
+reshape
+randomForest
+kernlab
+knitr

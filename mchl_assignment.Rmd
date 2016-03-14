@@ -1,0 +1,254 @@
+---
+title: "Prediction Assignment - Measuring Dumbell Exercise Accuracy"
+author: "Conrad Wong"
+date: "February 28, 2016"
+output: html_document
+---
+## Introdution
+
+The objective of this assignment is to predict how well 6 participants are doing Dumbbell Biceps Curls.  The result can be one of 5 values:
+- Class A: Performed exactly according to the specification 
+- Class B: Throwing the elbows to the front
+- Class C: Lifting the dumbbell only halfway
+- Class D: Lowering the dumbbell only halfway
+- Class E: Throwing the hips to the front (Class E).
+
+Read more: http://groupware.les.inf.puc-rio.br/har#ixzz42TYBTu3f
+
+Two datasets are provided: pml-training.csv and pml-testing.csv.  These datasets have the same columns, with the exeption of the last one, where the training data contains the result for each observations (classes described above), and the testing data includes a problem id, instead of the result. 
+
+We'll follow a 6 step process:
+
+- Step 1: Load and clean the data
+- Step 2: Split the training data (70% for training and 30% for testing)
+- Step 3: Predictor Analysis
+- Step 4: Reduce and summarize features through PCA
+- Step 5: Train the prediction models with the new set of features.
+- Step 6: Use the selected prediction model to estimate the out of sample error (using the test set)
+- Step 7: Predict the values on the testing data provided in the assignment
+
+
+## Step 1: Load and clean the data
+
+The following updates are made to the data:
+
+- Remove the columns that contain NA's
+- Remove colums that are not relevant to the prediction (for example the user name)
+- Remove the columns that contains blank data in one or more rows
+
+```{r}
+library(caret)
+library(data.table)
+library(reshape)
+library(knitr)
+
+fn <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(fn, "pml-training.csv", method="curl")
+
+data <- read.csv("pml-training.csv")
+
+# Remove the columns with NA's
+
+na.columns  <- apply(data, 2, anyNA)
+data <- data[, !names(data) %in% names(data)[na.columns]]
+
+# Remove the columns that contain blank data in one or more rows
+
+blank.columns <- apply(data, 2, function(x) sum(x=="")!=0)
+data <- data[, !names(data) %in% names(data)[blank.columns]]
+
+# Remove the columns that are not relevant for the analysis
+
+#data$user_name <- NULL
+data$raw_timestamp_part_1 <- NULL
+data$raw_timestamp_part_2 <- NULL
+data$cvtd_timestamp <- NULL
+data$new_window <- NULL
+data$num_window <- NULL
+data$X <- NULL
+
+```
+
+## Step 2: Split the training data (70% for training and 30% for testing)
+
+``` {r}
+set.seed(1234)
+
+inTrain <- createDataPartition(y=data$classe,
+                              p=0.7, list=FALSE)
+train.data <- data[inTrain,]
+test.data <- data[-inTrain,]
+
+```
+
+## Step 3: Predictor Analysis
+
+- Determine if there is correlation between the variables
+- Review if the user name is a factor for the class
+
+``` {r}
+
+cor_matrix <- abs(cor(train.data[, -c(1,54)]))
+diag(cor_matrix) <- 0
+cor_matrix <- melt(cor_matrix)
+cor_matrix <- cor_matrix[order(cor_matrix$X1), ]
+
+names(cor_matrix) <- c("Feature 1", "Feature 2", "Correlation")
+
+kable(cor_matrix[cor_matrix$Correlation  > 0.8, ])
+
+t <- table(data$classe, data$user_name)
+pt <- prop.table(t)
+plot(pt)
+```
+
+
+
+**Conclusions:** 
+- There are multiple variables that are correlated, so we'll use PCA to create a new set of features that are uncorrelated and explain as much variance as possible 
+- There are differences between the users, so we'll keep it as a feature for the training model, along with the accelerometer data
+
+## Step 4: Reduce and summarize features through PCA
+
+```{r}
+set.seed(1234)
+
+
+# Remove variable correlation through PCA
+
+preProc <- preProcess(train.data[, -54], method="pca")
+train.data.PC <- predict(preProc, train.data[, -54])
+
+```
+
+
+
+**Result:** PCA achives a ~48% reduction in the number of features, creating a new dataset with 25 features, instead of the 52 we had in the original one.  This removes the correlation between the features, and accelerates the execution of the prediction algorithm
+
+## Step 5: Train the prediction models with the new set of features.
+
+These are the models to be evaluated:
+
+- Trees with 10-fold cross validation
+- SVM with 10-fold cross validation
+- KNN with 10-fold cross validation
+- Random forest bootstrap resampling
+
+```{r cache=TRUE, echo=TRUE}
+set.seed(1234)
+
+# Evaluate different prediction models: Trees, Random Forest, SVM and k-Nearest Nighbor
+
+# Random Forest Model 
+
+modelFit_rf <- train(train.data$classe ~ ., method="rf", data=train.data.PC)
+
+# Tree Model
+
+tc <- trainControl("cv",10)
+modelFit_rpart <- train(train.data$classe ~ ., data= train.data.PC, method="rpart", trControl=tc)
+
+# SVM 
+
+modelFit_svm <- train(train.data$classe ~ ., method="svmLinear", data=train.data.PC, trControl=tc)
+
+# KNN
+
+modelFit_knn <- train(train.data$classe ~ ., method="knn", data=train.data.PC, trControl=tc)
+
+```
+
+
+
+This is the predition accuracy for each model:
+
+``` {R}
+
+# Obtain the accuracy for each model
+
+Model  <- c("Trees with 10-fold cross validation", "SVM with 10-fold cross validation", "KNN with 10-fold cross validation", "Random forest bootstrap resampling")
+
+In.Sample.Accuracy <- c(round(modelFit_rpart$results$Accuracy[1], 2), round(modelFit_svm$results$Accuracy[1], 2), round(modelFit_knn$results$Accuracy[1], 2), round(modelFit_rf$results$Accuracy[1], 2))
+
+In.Sample.Error <-c(1 - round(modelFit_rpart$results$Accuracy[1], 2), 1- round(modelFit_svm$results$Accuracy[1], 2), 1- round(modelFit_knn$results$Accuracy[1], 2), 1- round(modelFit_rf$results$Accuracy[1], 2))
+
+results <- data.frame(Model, In.Sample.Accuracy, In.Sample.Error)
+
+kable(results)
+
+```
+
+
+
+**Conclusion:** Random Forest provides the best in-sample accuracy
+
+## Step 6: Use the selected prediction model to estimate the out of sample error (using the test set)
+
+```{r}
+
+# Calculate out of sample error
+
+test.data.PC <- predict(preProc, test.data[, -54])
+
+cm_rf <- confusionMatrix(predict(modelFit_rf, test.data.PC), test.data$classe)
+cm_rpart <- confusionMatrix(predict(modelFit_rpart, test.data.PC), test.data$classe)
+cm_svm <- confusionMatrix(predict(modelFit_svm, test.data.PC), test.data$classe)
+cm_knn <- confusionMatrix(predict(modelFit_knn, test.data.PC), test.data$classe)
+
+Model  <- c("Trees with 10-fold cross validation", "SVM with 10-fold cross validation", "KNN with 10-fold cross validation", "Random forest bootstrap resampling")
+
+Out.Of.Sample.Accuracy <- c(round(cm_rpart$overall[1], 2), round(cm_svm$overall[1], 2), round(cm_knn$overall[1], 2), round(cm_rf$overall[1], 2))
+
+Out.Of.Sample.Error <- c(1 - round(cm_rpart$overall[1], 2), 1 - round(cm_svm$overall[1], 2), 1 - round(cm_knn$overall[1], 2), 1 - round(cm_rf$overall[1], 2))
+
+results <- data.frame(results, Out.Of.Sample.Accuracy, Out.Of.Sample.Error)
+
+kable(results)
+
+```
+
+
+
+** Conclusion: ** None of the algorithms is overfitting, as the out-of-sample error is very similar to the in-sample error.  Random Forest is the method that will be used for predictions
+
+## Step 7: Predict the values on the testing data provided in the assignment
+- Load the data
+- Apply same clean up rules as with the training data
+- Apply the PCA model to calculate the new set of features for the testing data
+- Predict the values for the 20 observations
+
+```{r}
+
+# Load the data
+
+download.file(fn, "pml-training.csv", method="curl")
+
+final.data <- read.csv("pml-testing.csv")
+
+# Apply same rules to clean up the data
+
+final.data <- final.data[, !names(final.data) %in% names(final.data)[na.columns]]
+
+final.data <- final.data[, !names(final.data) %in% names(final.data)[blank.columns]]
+
+#final.data$user_name <- NULL
+final.data$raw_timestamp_part_1 <- NULL
+final.data$raw_timestamp_part_2 <- NULL
+final.data$cvtd_timestamp <- NULL
+final.data$new_window <- NULL
+final.data$num_window <- NULL
+final.data$X <- NULL
+
+# Apply the PCA model calculated with the training set 
+
+final.data.PC <- predict(preProc, final.data[, -54])
+
+# Predict the values for classe for the 20 observations
+
+pred <- predict(modelFit_rf, final.data.PC)
+
+```
+
+
+
+** Note: ** Output not shown, to be compliant with Cursera's honor code
